@@ -1,6 +1,5 @@
 "use strict";
 
-import "./twgl-full.min.js";
 import webGLBlur from './webgl/blur.js'; 
 
 (function () {
