@@ -1,6 +1,7 @@
 "use strict";
 
-import webGLBlur from './webgl/blur.js'; 
+import { blur, glBlur } from './webgl/blur.js'; 
+import { grayscale, glGrayscale } from './webgl/grayscale.js';
 
 (function () {
 	const globalGL = document.createElement('canvas').getContext('webgl');
@@ -14,6 +15,7 @@ import webGLBlur from './webgl/blur.js';
 	const renderer1 = document.getElementById('renderer-1');
 	const renderer2 = document.getElementById('renderer-2');
 	const resetBtn = document.getElementById('reset-btn');
+	const compareResult = document.getElementById('compare-result');
 
 	let rendererOption1 = renderer1.value;
 	let rendererOption2 = renderer2.value;
@@ -36,19 +38,43 @@ import webGLBlur from './webgl/blur.js';
 		filterType = evt.target.value;
 	});
 
-	calculateButton.addEventListener('click', function () {
-		reset();
+	calculateButton.addEventListener('click', async function () {
+		await reset();
+
 		write(performance1, `Running...`);
+		const startTime1 = performance.now();
+		const newCanvas1 = filterOperation(filterType, rendererOption1)(img1);
+		const endTime1 = performance.now();
+		const delta1 = endTime1 - startTime1;
+		write(performance1, `${delta1} ms`);
+		await replaceImage(img1, newCanvas1);
 
-		const startTime = performance.now();
-		img1.onload = function () {
-			this.onload = noop();
+		write(performance2, `Running...`);
+		const startTime2 = performance.now();
+		const newCanvas2 = filterOperation(filterType, rendererOption2)(img2);
+		const endTime2 = performance.now();
+		const delta2 = endTime2 - startTime2;
+		write(performance2, `${delta2} ms`);
+
+		await replaceImage(img2, newCanvas2);
+
+		let result = "";
+		const rendererText1 = renderer1.options[renderer1.selectedIndex].text;
+		const rendererText2 = renderer2.options[renderer2.selectedIndex].text;
+		if (delta2 > delta1) {
+			result = `
+				<b>${rendererText1}</b> was <b style="color: green">${((delta2 / delta1 - 1) * 100).toFixed(2)}%</b> faster than <b>${rendererText2}</b>
+			`
+		} else if (delta2 < delta1) {
+			result = `
+				<b>${rendererText1}</b> was <b style="color: red">${((delta1 / delta2 - 1) * 100).toFixed(2)}%</b> slower than <b>${rendererText2}</b>
+			`
+		} else {
+			result = `
+				${rendererText1} was same as ${rendererText2}
+			`
 		}
-		const newCanvas = filterOperation(filterType, rendererOption1)(img1);
-		const endTime = performance.now();
-		write(performance1, `${(endTime - startTime)} ms`);
-		replaceImage(img1, newCanvas);
-
+		write(compareResult, result);
 	});
 
 	function initInfo() {
@@ -66,78 +92,55 @@ import webGLBlur from './webgl/blur.js';
 		}
 	}
 
-	function reset() {
-		img1.src = "lenna.png";
-		img1.onload = noop();
-		img2.src = "lenna.png";
-		img2.onload = noop();
+	async function reset() {
+		const img1Promise = new Promise(function(resolve, reject) {
+			img1.src = "lenna.png";
+			img1.onload = function() {
+				resolve();
+			}
+		});
+
+		const img2Promise = new Promise(function(resolve, reject) {
+			img2.src = "lenna.png";
+			img2.onload = function() {
+				resolve();
+			}
+		});
 		write(performance1, "");
 		write(performance2, "");
+		write(compareResult, "");
+
+		return Promise.all([img1Promise, img2Promise]);
 	}
 
 	function write(element, text) {
-		element.textContent = text;
+		element.innerHTML = text;
 	}
 
 	function noop() {
 		return;
 	}
 
-	function grayscale(img) {
-		const canvas = document.createElement('canvas');
-		const { width, height } = img;
-
-		canvas.width = width;
-		canvas.height = height;
-
-		const ctx = canvas.getContext('2d');
-		ctx.drawImage(img, 0, 0, width, height);
-
-		const imageData = ctx.getImageData(0, 0, width, height);
-		const pixels = imageData.data;
-
-		for (let i = 0; i < pixels.length; i+=4 ) {
-			const lightness = (pixels[i]*0.299 + pixels[i+1]*0.587 + pixels[i+2]*0.114);
-
-			pixels[i] = lightness;
-			pixels[i+1] = lightness;
-			pixels[i+2] = lightness;
-		}
-
-		ctx.putImageData(imageData, 0, 0);
-
-		return canvas;
-	}
-
-	function blur(img) {
-		const canvas = document.createElement('canvas');
-		const { width, height } = img;
-
-		canvas.width = width;
-		canvas.height = height;
-
-		const ctx = canvas.getContext('2d');
-		ctx.filter = 'blur(4px)';
-
-		ctx.drawImage(img, 0, 0, width, height);
-
-		return canvas;
-	}
 
 	function filterOperation(type, renderer) {
 		switch (type) {
 			case "blur":
-				return renderer === "0" ? blur : webGLBlur;
+				return renderer === "0" ? blur : glBlur;
 			case "grayscale":
-				return grayscale;
+				return renderer=== "0" ? grayscale : glGrayscale;
 			default:
 				return noop;
 		}
 	}
 
 	function replaceImage(image, canvas) {
-		canvas.toBlob(function (blob) {
-			image.src = URL.createObjectURL(blob);
+		return new Promise(function(resolve, reject) {
+			canvas.toBlob(function (blob) {
+				image.src = URL.createObjectURL(blob);
+				image.onload = function() {
+					resolve();
+				}
+			});
 		})
 	}
 
