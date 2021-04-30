@@ -127,7 +127,7 @@ import { grayscale, glGrayscale } from './webgl/grayscale.js';
 			case "blur":
 				return renderer === "0" ? blur : glBlur;
 			case "grayscale":
-				return renderer=== "0" ? grayscale : glGrayscale;
+				return renderer === "0" ? grayscale : glGrayscale;
 			default:
 				return noop;
 		}
